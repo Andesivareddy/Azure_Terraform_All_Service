@@ -1,0 +1,5 @@
+resource_group_name     = "Deploy-All-Services"
+resource_group_location = "West Europe"
+keyvault_name            = "example-vault"
+secret_name = "shiva"
+secret_vaule = "Ashiva@12345"
