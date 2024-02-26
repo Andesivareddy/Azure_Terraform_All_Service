@@ -1,0 +1,26 @@
+trigger: none
+# - main
+pr: none
+  # branches:
+  #   include:
+  #   - features/*
+  #   exclude:
+  #   - features/experimental/*
+  # paths:
+  #   exclude:
+  #   - README.md
+
+variables:
+- name: tf_folder
+  value: $(System.DefaultWorkingDirectory)/13_storage_blob 
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+
+- script: |
+      docker run --tty --volume $(tf_folder):/tf bridgecrew/checkov --directory /tf --compact
+  displayName: Run Static Code analysis for Terraform using Checkov
+
+# more details: https://adinermie.com/publishing-checkov-terraform-quality-checks-to-azure-devops-pipelines/
