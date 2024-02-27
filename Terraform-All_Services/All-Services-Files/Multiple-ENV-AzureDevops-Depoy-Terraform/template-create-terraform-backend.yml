@@ -1,0 +1,59 @@
+# parameters values will be passed from the main/parent yaml template.
+parameters:
+  environment: terraform_backend_tfstate
+  environmentDisplayName: Terraform Backend
+  backendServiceArm: ''
+  backendAzureRmResourceGroupName: 'resourcegroup-tfstate'
+  backendAzureRmStorageAccountName: 'terraformtfstate'
+  backendAzureRmContainerName: 'tfstate'
+  location: 'westeurope'
+  dependsOn: []
+  
+stages:
+
+- stage: ${{ parameters.environment }}
+  displayName: ${{ parameters.environmentDisplayName }}
+  dependsOn: []
+  jobs:
+  - job: Create_TF_Backend
+    displayName: TF Backend to save State
+    pool:
+      vmImage: ubuntu-latest
+
+    steps:
+    - task: AzureCLI@2
+      displayName: Create Storage Container for tfstate
+      inputs:
+        azureSubscription: ${{ parameters.backendServiceArm }}
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Create the resource group
+          az group create \
+             -n ${{ parameters.backendAzureRmResourceGroupName }} \
+             -l ${{ parameters.location }}
+           
+          echo "Resource group ${{ parameters.backendAzureRmResourceGroupName }} created."
+           
+          # Create the storage account
+          az storage account create \
+            -g ${{ parameters.backendAzureRmResourceGroupName }} \
+            -l ${{ parameters.location }} \
+            --name ${{ parameters.backendAzureRmStorageAccountName }} \
+            --sku Standard_LRS \
+            --encryption-services blob
+           
+          echo "Storage account ${{ parameters.backendAzureRmStorageAccountName }} created."
+           
+          # Retrieve the storage account key
+          ACCOUNT_KEY=$(az storage account keys list --resource-group ${{ parameters.backendAzureRmResourceGroupName }} --account-name ${{ parameters.backendAzureRmStorageAccountName }} --query [0].value -o tsv)
+           
+          echo "Storage account key retrieved."
+           
+          # Create a storage container (for the Terraform State)
+          az storage container create \
+             --name ${{ parameters.backendAzureRmContainerName }} \
+             --account-name ${{ parameters.backendAzureRmStorageAccountName }} \
+             --account-key $ACCOUNT_KEY
+           
+          echo "Storage container ${{ parameters.backendAzureRmContainerName }} created."

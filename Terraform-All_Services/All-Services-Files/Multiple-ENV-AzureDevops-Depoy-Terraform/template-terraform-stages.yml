@@ -1,0 +1,80 @@
+# parameters values will be passed from the main/parent yaml template.
+parameters:
+  environment: dev
+  environmentDisplayName: Development
+  backendServiceArm: ''
+  backendAzureRmResourceGroupName: 'resourcegroup-tfstate'
+  backendAzureRmStorageAccountName: 'terraformtfstate'
+  backendAzureRmContainerName: 'tfstate'
+  backendAzureRmKey: 'dev.tfstate'
+  workingDirectory: 'terraform'
+  anyTfChanges: false
+  dependsOn: []
+
+stages:
+
+- stage: ${{ parameters.environment }}
+  displayName: Deploy to ${{ parameters.environmentDisplayName }}
+  dependsOn: ${{ parameters.dependsOn  }}
+  jobs:
+  - job: Terraform_Plan
+    displayName: Terraform Init, Plan & Apply
+    pool:
+      vmImage: ubuntu-latest
+
+    steps:
+    
+    - task: TerraformInstaller@0
+      displayName: install Terraform v0.12.28
+      inputs:
+        terraformVersion: '0.12.28'
+    
+    - task: TerraformTaskV1@0
+      displayName: terraform init with Azure backend
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: ${{ parameters.workingDirectory }}
+        backendServiceArm: ${{ parameters.backendServiceArm }}
+        backendAzureRmResourceGroupName: ${{ parameters.backendAzureRmResourceGroupName }}
+        backendAzureRmStorageAccountName: ${{ parameters.backendAzureRmStorageAccountName }}
+        backendAzureRmContainerName: ${{ parameters.backendAzureRmContainerName }}
+        backendAzureRmKey: ${{ parameters.backendAzureRmKey }}
+    
+    - task: TerraformTaskV1@0
+      displayName: terraform plan -var environment=${{ parameters.environment }} -out=${{ parameters.backendAzureRmKey }}
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: ${{ parameters.workingDirectory }}
+        commandOptions: '-var environment=${{ parameters.environment }} -out=${{ parameters.backendAzureRmKey }}'
+        environmentServiceNameAzureRM: ${{ parameters.backendServiceArm }}
+    
+    - task: PowerShell@2
+      displayName: detect any terraform change in the plan
+      inputs:
+        workingDirectory: ${{ parameters.workingDirectory }}
+        targetType: 'inline'
+        script: |
+          $plan = $(terraform show -json ${{ parameters.backendAzureRmKey }} | ConvertFrom-Json)
+          $actions = $plan.resource_changes.change.actions
+          Write-Host "Terraform actions : $actions"
+          if (($actions -contains 'create') -or ($actions -contains 'delete') -or ($actions -contains 'update'))
+          {
+            Write-Host "Terraform will perform the following actions : $actions"
+            Write-Host "##vso[task.setvariable variable=anyTfChanges;]true"
+          }
+          else
+          {
+            Write-Host "There is no change detected in Terraform tfplan file"
+          }
+    
+    - task: TerraformTaskV1@0
+      displayName: terraform apply ${{ parameters.backendAzureRmKey }}
+      condition: eq(variables.anyTfChanges, true)
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: ${{ parameters.workingDirectory }}
+        commandOptions: ${{ parameters.backendAzureRmKey }}
+        environmentServiceNameAzureRM: ${{ parameters.backendServiceArm }}
